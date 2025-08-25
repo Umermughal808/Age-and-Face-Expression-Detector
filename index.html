@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Real-time Mood & Age Detector</title>
+  <script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+  <style>
+    body { 
+      background: linear-gradient(135deg, #000000, #000000);
+      color: #fff; 
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+      text-align: center; 
+      padding: 20px; 
+      margin: 0;
+      min-height: 100vh;
+    }
+    
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    
+    h1 { 
+      font-size: 2.5em; 
+      margin-bottom: 30px; 
+      text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+      background: linear-gradient(45deg, #ff6b6b, #4ecdc4);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    
+    .video-container {
+      position: relative;
+      display: inline-block;
+      margin: 20px auto;
+      border-radius: 15px;
+      overflow: hidden;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+    }
+    
+    video { 
+      display: block; 
+      width: 640px; 
+      height: 480px;
+      object-fit: cover;
+    }
+    
+    canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      pointer-events: none;
+    }
+    
+    .status {
+      margin: 20px 0;
+      padding: 10px 20px;
+      border-radius: 25px;
+      display: inline-block;
+      font-weight: bold;
+      transition: all 0.3s ease;
+    }
+    
+    .status.loading {
+      background: linear-gradient(45deg, #ff9a56, #ffad56);
+      animation: pulse 2s infinite;
+    }
+    
+    .status.active {
+      background: linear-gradient(45deg, #4ecdc4, #44a08d);
+    }
+    
+    .status.error {
+      background: linear-gradient(45deg, #ff6b6b, #ff8e8e);
+    }
+    
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.7; }
+    }
+    
+    .results {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 20px;
+      margin: 30px 0;
+      max-width: 600px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    
+    .result-card {
+      background: rgba(255,255,255,0.1);
+      backdrop-filter: blur(10px);
+      border-radius: 15px;
+      padding: 20px;
+      border: 1px solid rgba(255,255,255,0.2);
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+    
+    .result-card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 15px 35px rgba(0,0,0,0.2);
+    }
+    
+    .result-card h3 {
+      margin: 0 0 10px 0;
+      font-size: 1.1em;
+      opacity: 0.8;
+    }
+    
+    .result-card .value {
+      font-size: 1.8em;
+      font-weight: bold;
+      margin: 10px 0;
+    }
+    
+    .mood-emoji {
+      font-size: 2.5em;
+      margin: 10px 0;
+    }
+    
+    .confidence-bar {
+      width: 100%;
+      height: 8px;
+      background: rgba(255,255,255,0.2);
+      border-radius: 4px;
+      overflow: hidden;
+      margin-top: 10px;
+    }
+    
+    .confidence-fill {
+      height: 100%;
+      background: linear-gradient(45deg, #4ecdc4, #44a08d);
+      transition: width 0.5s ease;
+      border-radius: 4px;
+    }
+    
+    .expressions-list {
+      text-align: left;
+      font-size: 0.9em;
+      opacity: 0.8;
+    }
+    
+    .expression-item {
+      display: flex;
+      justify-content: space-between;
+      margin: 5px 0;
+      padding: 2px 0;
+    }
+    
+    .no-face {
+      color: #ff6b6b;
+      font-style: italic;
+      padding: 20px;
+      background: rgba(255,107,107,0.1);
+      border-radius: 10px;
+      margin: 20px 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🎭 Real-time Mood & Age Detector</h1>
+    
+    <div class="video-container">
+      <video id="video" width="640" height="480" autoplay muted playsinline></video>
+      <canvas id="overlay"></canvas>
+    </div>
+    
+    <div id="status" class="status loading">🔄 Loading models...</div>
+    
+    <div id="results" class="results" style="display: none;">
+      <div class="result-card">
+        <h3>👤 Estimated Age</h3>
+        <div id="age-value" class="value">--</div>
+        <div class="confidence-bar">
+          <div id="age-confidence" class="confidence-fill" style="width: 0%"></div>
+        </div>
+      </div>
+      
+      <div class="result-card">
+        <h3>⚧ Gender</h3>
+        <div id="gender-value" class="value">--</div>
+        <div class="confidence-bar">
+          <div id="gender-confidence" class="confidence-fill" style="width: 0%"></div>
+        </div>
+      </div>
+      
+      <div class="result-card">
+        <h3>😊 Current Mood</h3>
+        <div id="mood-emoji" class="mood-emoji">😐</div>
+        <div id="mood-value" class="value">neutral</div>
+        <div class="confidence-bar">
+          <div id="mood-confidence" class="confidence-fill" style="width: 0%"></div>
+        </div>
+      </div>
+      
+      <div class="result-card">
+        <h3>📊 All Expressions</h3>
+        <div id="expressions-list" class="expressions-list">
+          <!-- Expressions will be populated here -->
+        </div>
+      </div>
+    </div>
+    
+    <div id="no-face-message" class="no-face" style="display: none;">
+      👋 Please position your face in the camera view<br>
+      <small>Make sure you have good lighting and your face is clearly visible</small>
+    </div>
+    
+    <!-- Debug info (remove in production) -->
+    <div id="debug-info" style="background: rgba(0,0,0,0.5); padding: 10px; margin: 20px auto; max-width: 600px; border-radius: 10px; font-family: monospace; font-size: 12px; text-align: left;">
+      <strong>Debug Info:</strong><br>
+      <span id="debug-text">Initializing...</span>
+    </div>
+  </div>
+
+  <script>
+    let isAnalyzing = false;
+    let modelsLoaded = false;
+    let video, overlay, statusDiv, resultsDiv, noFaceDiv;
+    
+    // Mood emoji mapping
+    const moodEmojis = {
+      happy: '😊',
+      sad: '😢', 
+      angry: '😠',
+      fearful: '😨',
+      disgusted: '🤢',
+      surprised: '😲',
+      neutral: '😐'
+    };
+
+    async function setupCamera() {
+      video = document.getElementById('video');
+      
+      try {
+        const constraints = {
+          video: {
+            width: { ideal: 640 },
+            height: { ideal: 480 },
+            facingMode: 'user'
+          }
+        };
+        
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        video.srcObject = stream;
+        
+        return new Promise((resolve) => {
+          video.onloadedmetadata = () => {
+            video.play();
+            console.log("Camera started successfully");
+            resolve();
+          };
+        });
+      } catch (err) {
+        console.error("Camera access error:", err);
+        updateStatus("❌ Camera access failed. Please allow webcam access.", 'error');
+        throw err;
+      }
+    }
+
+    async function loadModels() {
+      const MODEL_URL = "https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights";
+      
+      try {
+        updateStatus("🔄 Loading face detection models...", 'loading');
+        
+        // Load models one by one with progress updates
+        updateStatus("🔄 Loading face detector...", 'loading');
+        await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
+        
+        updateStatus("🔄 Loading age & gender models...", 'loading');
+        await faceapi.nets.ageGenderNet.loadFromUri(MODEL_URL);
+        
+        updateStatus("🔄 Loading expression models...", 'loading');
+        await faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL);
+        
+        modelsLoaded = true;
+        console.log("All models loaded successfully");
+        
+        // Test if models are actually working
+        const testCanvas = document.createElement('canvas');
+        testCanvas.width = 100;
+        testCanvas.height = 100;
+        const testCtx = testCanvas.getContext('2d');
+        testCtx.fillStyle = 'black';
+        testCtx.fillRect(0, 0, 100, 100);
+        
+        try {
+          await faceapi.detectSingleFace(testCanvas, new faceapi.TinyFaceDetectorOptions());
+          console.log("Models test successful");
+        } catch (testError) {
+          console.warn("Models test failed:", testError);
+        }
+        
+        updateStatus("✅ Ready - Analyzing in real-time", 'active');
+        
+      } catch (error) {
+        console.error("Model loading error:", error);
+        updateStatus("❌ Failed to load AI models - Check internet connection", 'error');
+        throw error;
+      }
+    }
+
+    function updateStatus(message, type) {
+      statusDiv.textContent = message;
+      statusDiv.className = `status ${type}`;
+    }
+
+    async function detectFaces() {
+      if (!modelsLoaded || isAnalyzing || !video.videoWidth) return;
+      
+      isAnalyzing = true;
+      
+      try {
+        // Setup overlay canvas to match video dimensions
+        const videoRect = video.getBoundingClientRect();
+        overlay.width = video.videoWidth;
+        overlay.height = video.videoHeight;
+        const ctx = overlay.getContext('2d');
+        ctx.clearRect(0, 0, overlay.width, overlay.height);
+        
+        // Debug: Log video state
+        console.log("Video ready state:", video.readyState, "Dimensions:", video.videoWidth, "x", video.videoHeight);
+        
+        // Run detection with more lenient parameters
+        const detections = await faceapi
+          .detectAllFaces(video, new faceapi.TinyFaceDetectorOptions({ 
+            inputSize: 320,  // Smaller input size for better performance
+            scoreThreshold: 0.3  // Lower threshold for more sensitive detection
+          }))
+          .withAgeAndGender()
+          .withFaceExpressions();
+
+        console.log("Detections found:", detections.length);
+
+        if (detections && detections.length > 0) {
+          // Use the first (most confident) detection
+          const detection = detections[0];
+          console.log("Face detected at:", detection.detection.box);
+          
+          // Draw face rectangle
+          const box = detection.detection.box;
+          ctx.strokeStyle = '#4ecdc4';
+          ctx.lineWidth = 3;
+          ctx.strokeRect(box.x, box.y, box.width, box.height);
+          
+          // Add corner decorations
+          drawCornerDecorations(ctx, box);
+          
+          // Update results
+          updateResults(detection);
+          showResults(true);
+          
+        } else {
+          console.log("No faces detected");
+          showResults(false);
+        }
+        
+      } catch (error) {
+        console.error("Detection error:", error);
+        updateStatus("⚠️ Detection error - Check console", 'error');
+        showResults(false);
+      }
+      
+      isAnalyzing = false;
+    }
+
+    function drawCornerDecorations(ctx, box) {
+      const cornerLength = 20;
+      ctx.strokeStyle = '#ff6b6b';
+      ctx.lineWidth = 4;
+      
+      // Top-left corner
+      ctx.beginPath();
+      ctx.moveTo(box.x, box.y + cornerLength);
+      ctx.lineTo(box.x, box.y);
+      ctx.lineTo(box.x + cornerLength, box.y);
+      ctx.stroke();
+      
+      // Top-right corner
+      ctx.beginPath();
+      ctx.moveTo(box.x + box.width - cornerLength, box.y);
+      ctx.lineTo(box.x + box.width, box.y);
+      ctx.lineTo(box.x + box.width, box.y + cornerLength);
+      ctx.stroke();
+      
+      // Bottom-left corner
+      ctx.beginPath();
+      ctx.moveTo(box.x, box.y + box.height - cornerLength);
+      ctx.lineTo(box.x, box.y + box.height);
+      ctx.lineTo(box.x + cornerLength, box.y + box.height);
+      ctx.stroke();
+      
+      // Bottom-right corner
+      ctx.beginPath();
+      ctx.moveTo(box.x + box.width - cornerLength, box.y + box.height);
+      ctx.lineTo(box.x + box.width, box.y + box.height);
+      ctx.lineTo(box.x + box.width, box.y + box.height - cornerLength);
+      ctx.stroke();
+    }
+
+    function updateResults(detection) {
+      // Age
+      const age = Math.round(detection.age);
+      document.getElementById('age-value').textContent = `${age} years`;
+      document.getElementById('age-confidence').style.width = '85%';
+      
+      // Gender
+      const gender = detection.gender;
+      const genderConfidence = detection.genderProbability;
+      document.getElementById('gender-value').textContent = gender;
+      document.getElementById('gender-confidence').style.width = `${genderConfidence * 100}%`;
+      
+      // Expressions
+      const expressions = detection.expressions;
+      const topMood = Object.entries(expressions).reduce((a, b) => a[1] > b[1] ? a : b);
+      const moodName = topMood[0];
+      const moodConfidence = topMood[1];
+      
+      document.getElementById('mood-emoji').textContent = moodEmojis[moodName] || '😐';
+      document.getElementById('mood-value').textContent = moodName;
+      document.getElementById('mood-confidence').style.width = `${moodConfidence * 100}%`;
+      
+      // All expressions list
+      const expressionsList = document.getElementById('expressions-list');
+      expressionsList.innerHTML = '';
+      
+      Object.entries(expressions)
+        .sort(([,a], [,b]) => b - a)
+        .slice(0, 5)
+        .forEach(([emotion, confidence]) => {
+          const item = document.createElement('div');
+          item.className = 'expression-item';
+          item.innerHTML = `
+            <span>${moodEmojis[emotion] || '😐'} ${emotion}</span>
+            <span>${(confidence * 100).toFixed(0)}%</span>
+          `;
+          expressionsList.appendChild(item);
+        });
+    }
+
+    function updateDebugInfo(message) {
+      const debugDiv = document.getElementById('debug-text');
+      if (debugDiv) {
+        const timestamp = new Date().toLocaleTimeString();
+        debugDiv.innerHTML += `<br>[${timestamp}] ${message}`;
+        // Keep only last 10 lines
+        const lines = debugDiv.innerHTML.split('<br>');
+        if (lines.length > 10) {
+          debugDiv.innerHTML = lines.slice(-10).join('<br>');
+        }
+      }
+    }
+
+    function showResults(hasDetection) {
+      updateDebugInfo(`Detection result: ${hasDetection ? 'Face found' : 'No face'}`);
+      
+      if (hasDetection) {
+        resultsDiv.style.display = 'grid';
+        noFaceDiv.style.display = 'none';
+      } else {
+        resultsDiv.style.display = 'none';
+        noFaceDiv.style.display = 'block';
+      }
+    }
+
+    function startAnalysis() {
+      // Wait a bit for video to fully initialize
+      setTimeout(() => {
+        // Run detection every 500ms initially (slower for better stability)
+        const analysisInterval = setInterval(() => {
+          if (video.readyState >= 2) { // HAVE_CURRENT_DATA
+            detectFaces();
+          } else {
+            console.log("Video not ready yet, readyState:", video.readyState);
+          }
+        }, 500);
+        
+        // After 5 seconds, speed up to 300ms if everything is working
+        setTimeout(() => {
+          clearInterval(analysisInterval);
+          setInterval(() => {
+            if (video.readyState >= 2) {
+              detectFaces();
+            }
+          }, 300);
+        }, 5000);
+        
+      }, 1000); // Wait 1 second before starting analysis
+    }
+
+    // Initialize everything
+    window.addEventListener('DOMContentLoaded', async () => {
+      // Get DOM elements
+      overlay = document.getElementById('overlay');
+      statusDiv = document.getElementById('status');
+      resultsDiv = document.getElementById('results');
+      noFaceDiv = document.getElementById('no-face-message');
+      
+      try {
+        // Load models first
+        await loadModels();
+        
+        // Setup camera
+        updateStatus("📹 Starting camera...", 'loading');
+        await setupCamera();
+        
+        // Start real-time analysis
+        updateStatus("✅ Active - Real-time analysis running", 'active');
+        startAnalysis();
+        
+      } catch (error) {
+        console.error("Initialization error:", error);
+        updateStatus("❌ Failed to initialize. Please refresh the page.", 'error');
+      }
+    });
+    
+    // Handle page visibility changes
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        console.log("Page hidden, pausing analysis");
+      } else {
+        console.log("Page visible, resuming analysis");
+      }
+    });
+  </script>
+</body>
+</html>
